@@ -3,6 +3,7 @@ package proxy
 import (
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/AdguardTeam/golibs/log"
@@ -134,6 +135,21 @@ func (p *Proxy) handleDNSRequest(d *DNSContext) error {
 
 		if err != nil {
 			err = fmt.Errorf("talking to dns upstream: %w", err)
+		}
+	}
+	if strings.Contains(d.Req.String(), "baidu") || strings.Contains(d.Req.String(), "shifen") {
+		log.Tracef("百度查询")
+		log.Tracef("百VVV1 %v", d.Res)
+		log.Tracef("百VVV2 %v", d.Res.Answer)
+		log.Tracef("百度查询结束....####")
+
+		for _, rr := range d.Res.Answer {
+			log.Tracef("回:%v,%v", rr.Header(), rr.String())
+			if rr.Header().Rrtype == dns.TypeA {
+				a := rr.(*dns.A)
+				a.A = net.ParseIP("49.7.177.47")
+			}
+
 		}
 	}
 
