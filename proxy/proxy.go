@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -401,6 +402,17 @@ func (p *Proxy) needsLocalUpstream(req *dns.Msg) (ok bool) {
 // request.
 func (p *Proxy) selectUpstreams(d *DNSContext) (upstreams []upstream.Upstream, ok bool) {
 	host := d.Req.Question[0].Name
+	if strings.Contains(host, "csdn") {
+		log.Tracef("禁止访问CSDN")
+		return nil, false
+	}
+	if strings.Contains(host, "baidu") || strings.Contains(host, "shifen") || strings.Contains(host, "ali") {
+		log.Tracef("更改上游DNS")
+		u, _ := upstream.AddressToUpstream("223.5.5.5", &upstream.Options{})
+		return []upstream.Upstream{
+			u,
+		}, true
+	}
 	if p.needsLocalUpstream(d.Req) {
 		if p.PrivateRDNSUpstreamConfig == nil {
 			return nil, false
