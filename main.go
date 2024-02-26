@@ -3,16 +3,26 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"github.com/elliotchance/pie/v2"
+	"github.com/go-resty/resty/v2"
+	"github.com/golang/protobuf/proto"
+	"github.com/miekg/dns"
+	"github.com/qwenode/gogo/ff"
+	"github.com/qwenode/gogo/serialize"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
+	"v2ray.com/core/app/router"
 
 	"github.com/AdguardTeam/dnsproxy/internal/version"
 	"github.com/AdguardTeam/dnsproxy/proxy"
@@ -198,7 +208,9 @@ const (
 
 func main() {
 	options := &Options{}
-
+	getwd, _ := os.Getwd()
+	WorkDirectory, _ := filepath.Abs(getwd)
+	os.Args = append(os.Args, "--config-path="+filepath.Join(WorkDirectory, "xdns.yaml"))
 	for _, arg := range os.Args {
 		if arg == "--version" {
 			fmt.Printf("dnsproxy version: %s\n", version.Version())
@@ -238,6 +250,66 @@ func main() {
 	run(options)
 }
 
+var (
+	DnsMapper  = []DnsItem{}
+	DnsLocker  = new(sync.RWMutex)
+	DnsVersion = 0
+)
+
+type DnsItem struct {
+	Domain string `json:"domain"`
+	Ip     string `json:"ip"`
+}
+type DnsVer struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data int    `json:"data"`
+}
+type DnsList struct {
+	Code int       `json:"code"`
+	Msg  string    `json:"msg"`
+	Data []DnsItem `json:"data"`
+}
+
+func updateDnsMapper() {
+	// catch all panic
+	defer func() {
+		err := recover()
+		if err != nil {
+			//debug.PrintStack()
+			log.Println("System Error:", err)
+		}
+	}()
+	cacheFile := filepath.Join(ff.GetWorkDirectory(),"hosts.json")
+	DnsLocker.Lock()
+	json.Unmarshal(ff.GetContentsByte(cacheFile),&DnsMapper)
+	DnsLocker.Unlock()
+	for {
+		client := resty.New()
+		get, _ := client.R().Get("https://guard.qwe.top/api/not-safe/dnsv")
+		ver := DnsVer{}
+		json.Unmarshal(get.Body(), &ver)
+		if ver.Data == DnsVersion && DnsVersion != 0 {
+			time.Sleep(time.Second * 60)
+			continue
+		}
+		DnsVersion = ver.Data
+		response, _ := client.R().Get("https://guard.qwe.top/api/not-safe/dnsl")
+		list := DnsList{}
+		json.Unmarshal(response.Body(), &list)
+		if len(list.Data) <= 0 {
+			time.Sleep(time.Second * 60)
+			continue
+		}
+		DnsLocker.Lock()
+		DnsMapper = pie.SortUsing[DnsItem](list.Data, func(a, b DnsItem) bool {
+			return len(a.Domain) > len(b.Domain)
+		})
+		DnsLocker.Unlock()
+		ff.PutContents(cacheFile,serialize.JsonEncodeByte(DnsMapper))
+		time.Sleep(time.Second * 60)
+	}
+}
 func run(options *Options) {
 	if options.Verbose {
 		log.SetLevel(log.DEBUG)
@@ -255,21 +327,90 @@ func run(options *Options) {
 	}
 
 	runPprof(options)
-
+	//更新dns解析
+	go updateDnsMapper()
 	log.Info("Starting dnsproxy %s", version.Version())
 
 	// Prepare the proxy server and its configuration.
 	config := createProxyConfig(options)
 	dnsProxy := &proxy.Proxy{Config: config}
-
 	// Add extra handler if needed.
-	if options.IPv6Disabled {
-		ipv6Configuration := ipv6Configuration{ipv6Disabled: options.IPv6Disabled}
-		dnsProxy.RequestHandler = ipv6Configuration.handleDNSRequest
-	}
+	//if options.IPv6Disabled {
+	//	ipv6Configuration := ipv6Configuration{ipv6Disabled: options.IPv6Disabled}
+	//	dnsProxy.RequestHandler = ipv6Configuration.handleDNSRequest
+	//}
+	getwd, _ := os.Getwd()
+	WorkDirectory, _ := filepath.Abs(getwd)
+	geoFile := filepath.Join(WorkDirectory, "geosite.dat")
+	geoBytes := ff.GetContentsByte(geoFile)
+	var geoList router.GeoSiteList
+	proto.Unmarshal(geoBytes, &geoList)
+	domains := []*router.Domain{}
+	for _, site := range geoList.GetEntry() {
 
+		if site.GetCountryCode() == "CN" || site.GetCountryCode() == "PRIVATE" {
+			log.Println("国家:", site.GetCountryCode())
+			domains = append(domains, site.GetDomain()...)
+		}
+	}
+	log.Println("区域域名总量:", len(domains))
+	matcher, err := router.NewDomainMatcher(domains)
+	if err != nil {
+		log.Println("加载失败", err.Error())
+		return
+	}
+	//上游服务器
+	hkUpstream1, _ := upstream.AddressToUpstream("https://x2.xyldiy.com", nil)
+	hkUpstream2, _ := upstream.AddressToUpstream("https://1.1.1.1/dns-query", nil)
+	hkUpstreams := []upstream.Upstream{hkUpstream1, hkUpstream2}
+	cnUpstream1, _ := upstream.AddressToUpstream("https://dns.alidns.com/dns-query", nil)
+	cnUpstream2, _ := upstream.AddressToUpstream("https://1.12.12.12/dns-query", nil)
+	cnUpstreams := []upstream.Upstream{cnUpstream1, cnUpstream2}
+	dnsProxy.BeforeRequestHandler = func(p *proxy.Proxy, d *proxy.DNSContext) (bool, error) {
+		name := d.Req.Question[0].Name
+		if matcher.ApplyDomain(strings.Trim(name, ".")) {
+			log.Println("是国内域名:", name)
+			p.UpstreamConfig.Upstreams = cnUpstreams
+		} else {
+			log.Println("非国内域名:", name)
+			p.UpstreamConfig.Upstreams = hkUpstreams
+		}
+		return true, nil
+	}
+	dnsProxy.RequestHandler = func(p *proxy.Proxy, d *proxy.DNSContext) error {
+		log.Println("查询域名为:", d.Req.Question[0].Name)
+		name := "." + strings.Trim(d.Req.Question[0].Name, ".") + "."
+		DnsLocker.RLock()
+		matchDomain := DnsItem{}
+		for _, item := range DnsMapper {
+			dd := "." + strings.Trim(item.Domain, ".") + "."
+			if strings.HasSuffix(name, dd) {
+				matchDomain = item
+				break
+			}
+		}
+		DnsLocker.RUnlock()
+		if matchDomain.Domain != "" {
+			aRec := &dns.A{
+				Hdr: dns.RR_Header{
+					Name:   d.Req.Question[0].Name,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    1,
+				},
+				A: net.ParseIP(matchDomain.Ip).To4(),
+			}
+			d.Res = new(dns.Msg)
+			d.Res.SetReply(d.Req)
+			d.Res.Authoritative = true
+			d.Res.Answer = append(d.Res.Answer, aRec)
+			return nil
+		}
+		err = p.Resolve(d)
+		return err
+	}
 	// Start the proxy server.
-	err := dnsProxy.Start()
+	err = dnsProxy.Start()
 	if err != nil {
 		log.Fatalf("cannot start the DNS proxy due to %s", err)
 	}

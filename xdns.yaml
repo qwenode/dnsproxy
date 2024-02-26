@@ -1,0 +1,33 @@
+# This is the yaml configuration file for dnsproxy with minimal working
+# configuration, all the options available can be seen with ./dnsproxy --help.
+# To use it within dnsproxy specify the --config-path=/<path-to-config.yaml>
+# option.  Any other command-line options specified will override the values
+# from the config file.
+#C:\data\etc\dns\dnsproxy.exe -l 127.0.0.1 -v -p 53 -u quic://84c251.dns.nextdns.io -f https://doh.opendns.com/dns-query -f https://45.11.45.11/dns-query --cache --cache-size=1000000 --cache-min-ttl=3600 --cache-max-ttl=86400 --fastest-addr --all-servers
+bootstrap:
+  - "185.228.168.168"
+  - "45.90.28.77"
+  - "185.228.169.168"
+  - "1.1.1.1"
+  - "223.5.5.5"
+listen-addrs:
+  - "127.0.0.1"
+  - "::1"
+listen-ports:
+  - 55
+max-go-routines: 0
+verbose: true
+ratelimit: 0
+udp-buf-size: 0
+all-servers: true
+fastest-addr: true
+cache: true
+cache-size: 100000000
+cache-min-ttl: 3600
+cache-max-ttl: 86400
+upstream:
+  - "https://x2.xyldiy.com/c5d2eb"
+fallback:
+  - "https://doh.cleanbrowsing.org/doh/family-filter/"
+  - "https://doh.opendns.com/dns-query"
+  - "https://45.11.45.11/dns-query"

@@ -2,21 +2,28 @@ module github.com/AdguardTeam/dnsproxy
 
 go 1.20
 
+replace v2ray.com/core v4.28.2+incompatible => ../v2ray-core
+
 require (
 	github.com/AdguardTeam/golibs v0.17.0
 	github.com/ameshkov/dnscrypt/v2 v2.2.7
 	github.com/ameshkov/dnsstamps v1.0.3
 	github.com/beefsack/go-rate v0.0.0-20220214233405-116f4ca011a0
 	github.com/bluele/gcache v0.0.2
+	github.com/elliotchance/pie/v2 v2.8.0
+	github.com/go-resty/resty/v2 v2.10.0
+	github.com/golang/protobuf v1.5.3
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/miekg/dns v1.1.56
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/quic-go/quic-go v0.39.1
+	github.com/qwenode/gogo v1.77.1
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
+	v2ray.com/core v4.28.2+incompatible
 )
 
 require (
@@ -31,10 +38,12 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.3.4 // indirect
+	go.starlark.net v0.0.0-20201006213952-227f4aabceb5 // indirect
 	go.uber.org/mock v0.3.0 // indirect
 	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.13.0 // indirect
+	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 )

@@ -16,3 +16,6 @@ example.crt
 example.key
 coverage.txt
 config.yaml
+.idea/dnsproxy.iml
+.idea/modules.xml
+.idea/vcs.xml
